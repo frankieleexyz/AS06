@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AS06</title>
+  <!-- 引入 jQuery CDN -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <style>
+    /* 1. 基本重置 */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* 2. 全局樣式：隱藏外層滾動條，確保整頁切換視覺乾淨 */
+    body {
+      overflow: hidden;
+      font-family: sans-serif;
+      background-color: #000000; /* 防止邊界背景透出白邊 */
+    }
+
+    /* 3. 主容器：大頁面（100vh）切換時的平滑過渡動畫 */
+    .main-container {
+      width: 100vw;
+      height: 100vh;
+      transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    /* 4. 一般頁面基本樣式 (100vh) */
+    .page {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+
+    /* 5. 第 3 頁外層容器：可見視窗限制為 100vh，隱藏超出部分 */
+    .page-300vh {
+      height: 100vh;
+      overflow: hidden;
+      display: block;
+    }
+
+    /* 6. 第 3 頁內部內容區：黃色(100vh) + 灰色(100vh) = 200vh 總高
+       搭配 0.25s ease-out 讓內部的滾動視覺感受柔和慢速 */
+    .page-300vh-content {
+      width: 100%;
+      height: 200vh;
+      transition: transform 0.25s ease-out;
+    }
+
+    /* 7. 第 3 頁內部的子區塊 (上半部與下半部各自高 100vh，確保文字精準置中於螢幕) */
+    .sub-page {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* 8. 各區塊背景顏色設定 */
+    .red    { background-color: #ff4d4d; }
+    .orange { background-color: #ff944d; }
+    .yellow { background-color: #ffd633; }
+    .gray   { background-color: #888888; }
+    .green  { background-color: #4dcd52; }
+    .cyan   { background-color: #33d6d6; }
+
+    /* 9. 白色中間標題文字 */
+    .page-title {
+      color: #ffffff;
+      font-size: 3rem;
+      font-weight: bold;
+      letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 包裹所有區塊的主容器 -->
+  <div class="main-container">
+    <!-- 第 1 頁：紅 (100vh) -->
+    <div class="page red">
+      <h1 class="page-title">第一頁</h1>
+    </div>
+    
+    <!-- 第 2 頁：橙 (100vh) -->
+    <div class="page orange">
+      <h1 class="page-title">第二頁</h1>
+    </div>
+    
+    <!-- 第 3 頁：黃+灰 (總高 300vh，可見區塊精確無露白) -->
+    <div class="page page-300vh">
+      <div class="page-300vh-content">
+        <!-- 上半部：100vh 黃色 -->
+        <div class="sub-page yellow">
+          <h1 class="page-title">第三頁（上）</h1>
+        </div>
+        <!-- 下半部：100vh 灰色 -->
+        <div class="sub-page gray">
+          <h1 class="page-title">第三頁（下）</h1>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 第 4 頁：綠 (100vh) -->
+    <div class="page green">
+      <h1 class="page-title">第四頁</h1>
+    </div>
+    
+    <!-- 第 5 頁：青 (100vh) -->
+    <div class="page cyan">
+      <h1 class="page-title">第五頁</h1>
+    </div>
+  </div>
+
+  <script>
+    $(document).ready(function () {
+      let currentIndex = 0; // 目前大頁面索引 (0 ~ 4)
+      const $pages = $('.page');
+      const totalPages = $pages.length;
+      let lastAnimationTime = 0;
+      const quietPeriod = 800; // 大頁面切換冷卻時間 (ms)
+      
+      // 關鍵：用來吸收並鎖死切換頁面時「慣性餘力」的鎖
+      let ignoreInertia = false; 
+
+      // 第 3 頁內部的位移距離 (px)
+      let subPageOffset = 0; 
+
+      // 計算第 3 頁內部最大位移距離 (200vh 總高 - 100vh 視窗 = 100vh)
+      function getMaxSubScroll() {
+        return Math.round(window.innerHeight);
+      }
+
+      // 大頁面跳轉
+      function goToPage(index, direction) {
+        if (index < 0 || index >= totalPages) return;
+
+        currentIndex = index;
+        const targetY = currentIndex * window.innerHeight;
+        const $content = $('.page-300vh-content');
+
+        // 1. 切換時，開啟「餘震過濾鎖」，防止滑動的餘力滲透進 Div3
+        ignoreInertia = true;
+
+        // 2. 處理 Div3 內部的無縫對齊
+        if ($pages.eq(currentIndex).hasClass('page-300vh')) {
+          const maxScroll = getMaxSubScroll();
+          
+          // 關閉內部過渡動畫，確保瞬間精確定位
+          $content.css('transition', 'none');
+
+          if (direction === 'down') {
+            // 從 Div2 跳進 Div3 -> 黃色頂部 100% 嚴絲合縫貼住視框頂部
+            subPageOffset = 0; 
+          } else if (direction === 'up') {
+            // 從 Div4 跳進 Div3 -> 灰色底部 100% 嚴絲合縫貼住視框底部
+            subPageOffset = maxScroll; 
+          }
+
+          $content.css('transform', `translateY(-${subPageOffset}px)`);
+        }
+
+        // 3. 移動主容器 (0.6s)
+        $('.main-container').css('transform', `translateY(-${targetY}px)`);
+
+        // 4. 動畫完成後，恢復過渡動畫；並在 400ms 後解開「餘震過濾鎖」
+        setTimeout(function () {
+          $content.css('transition', 'transform 0.25s ease-out');
+        }, 50);
+
+        setTimeout(function () {
+          ignoreInertia = false; // 慣性餘震已完全結束，現在允許使用者開始在 Div3 內捲動
+        }, 400);
+      }
+
+      // 1. 電腦端滾輪事件 (wheel)
+      window.addEventListener('wheel', function (e) {
+        e.preventDefault(); // 阻止瀏覽器預設滾動
+
+        // 如果還在「切換餘震冷卻期」，直接扔掉所有傳進來的滾輪訊號！
+        if (ignoreInertia) return;
+
+        const currentTime = new Date().getTime();
+        const $currentContainer = $pages.eq(currentIndex);
+        const delta = e.deltaY;
+
+        // 處於 Div3 時的處理
+        if ($currentContainer.hasClass('page-300vh')) {
+          const maxScroll = getMaxSubScroll();
+
+          // 判斷是否在 Div3 內部中間區段 (向上未到 0，或向下未到 maxScroll)
+          const canScrollDown = delta > 0 && subPageOffset < maxScroll;
+          const canScrollUp = delta < 0 && subPageOffset > 0;
+
+          if (canScrollDown || canScrollUp) {
+            // 微調滾動阻尼 (0.35 保持慢速平滑)
+            subPageOffset += delta * 0.35;
+
+            // 嚴格限制邊界，黃色頂部絕對不允許小於 0
+            if (subPageOffset < 0) subPageOffset = 0;
+            if (subPageOffset > maxScroll) subPageOffset = maxScroll;
+
+            // 更新 Div3 內部位置
+            $('.page-300vh-content').css('transform', `translateY(-${subPageOffset}px)`);
+            
+            lastAnimationTime = currentTime;
+            return; 
+          }
+        }
+
+        // 冷卻鎖：確保到達灰色最底端後，必須手勢停下並「再次劃動」才會跳大頁
+        if (currentTime - lastAnimationTime < quietPeriod) return;
+
+        if (delta > 20) {
+          goToPage(currentIndex + 1, 'down');
+          lastAnimationTime = currentTime;
+        } else if (delta < -20) {
+          goToPage(currentIndex - 1, 'up');
+          lastAnimationTime = currentTime;
+        }
+      }, { passive: false });
+
+      // 2. 移動端觸控事件 (Touch)
+      let startY = 0;
+
+      $(window).on('touchstart', function (e) {
+        if (ignoreInertia) return;
+        startY = e.originalEvent.touches[0].pageY;
+      });
+
+      $(window).on('touchend', function (e) {
+        if (ignoreInertia) return;
+
+        const currentTime = new Date().getTime();
+        const $currentContainer = $pages.eq(currentIndex);
+        const endY = e.originalEvent.changedTouches[0].pageY;
+        const distance = startY - endY;
+
+        if ($currentContainer.hasClass('page-300vh')) {
+          const maxScroll = getMaxSubScroll();
+          const canScrollDown = distance > 0 && subPageOffset < maxScroll;
+          const canScrollUp = distance < 0 && subPageOffset > 0;
+
+          if (canScrollDown || canScrollUp) {
+            subPageOffset += distance * 0.5;
+            if (subPageOffset < 0) subPageOffset = 0;
+            if (subPageOffset > maxScroll) subPageOffset = maxScroll;
+
+            $('.page-300vh-content').css('transform', `translateY(-${subPageOffset}px)`);
+            lastAnimationTime = currentTime;
+            return;
+          }
+        }
+
+        if (currentTime - lastAnimationTime < quietPeriod) return;
+
+        if (distance > 50) {
+          goToPage(currentIndex + 1, 'down');
+          lastAnimationTime = currentTime;
+        } else if (distance < -50) {
+          goToPage(currentIndex - 1, 'up');
+          lastAnimationTime = currentTime;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
