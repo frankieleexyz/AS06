@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>整頁滑動 + 第三頁平滑捲動</title>
+
+<style>
+  /* 去掉預設邊距 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* 隱藏捲軸，捲動完全交給 jQuery 控制
+     注意：只能設在 html 上；若 body 也設 height:100% + overflow:hidden，
+     body 會被鎖成一個畫面高，內容被裁掉，頁面就完全捲不動 */
+  html { overflow: hidden; }
+
+  /* 每一頁的共同樣式：高度 100vh，文字白色、置中 */
+  .page {
+    height: 100vh;
+    display: flex;
+    justify-content: center;   /* 水平置中 */
+    align-items: center;       /* 垂直置中 */
+    color: #fff;
+    font-size: 48px;
+    font-weight: bold;
+  }
+
+  /* 五個顏色 */
+  #p1 { background: red; }
+  #p2 { background: orange; }
+  #p4 { background: green; }
+  #p5 { background: cyan; }
+
+  /* 第三頁：300vh，裡面分成上下兩半 */
+  #p3 { height: 300vh; }
+  #p3 .half {
+    height: 150vh;             /* 300vh 的一半 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #fff;
+    font-size: 48px;
+    font-weight: bold;
+  }
+  #p3 .top    { background: yellow; }  /* 上半：黃色 */
+  #p3 .bottom { background: gray; }    /* 下半：灰色 */
+</style>
+</head>
+<body>
+
+  <div class="page" id="p1">第一頁</div>
+  <div class="page" id="p2">第二頁</div>
+
+  <!-- 第三頁：300vh，一半黃、一半灰 -->
+  <div id="p3">
+    <div class="half top">第三頁（上）</div>
+    <div class="half bottom">第三頁（下）</div>
+  </div>
+
+  <div class="page" id="p4">第四頁</div>
+  <div class="page" id="p5">第五頁</div>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script>
+$(function () {
+
+  var $scroller  = $(document.scrollingElement || 'html'); // 負責捲動的元素
+  var busy       = false;  // 是否正在「跳頁」動畫中（避免連續觸發）
+  var target     = 0;      // 第三頁內平滑捲動的目標位置
+  var lastSmooth = 0;      // 最後一次在第三頁內捲動的時間
+
+  // 重新整理時回到最上方
+  $scroller.scrollTop(0);
+
+  // 取得所有「停靠點」的位置
+  function getPoints() {
+    var vh    = $(window).height();
+    var p3Top = $('#p3').offset().top;                       // 第三頁頂端
+    var p3End = p3Top + $('#p3').outerHeight() - vh;         // 第三頁底端（畫面剛好看到最底）
+    return {
+      list: [
+        $('#p1').offset().top,  // 0：第一頁
+        $('#p2').offset().top,  // 1：第二頁
+        p3Top,                  // 2：第三頁頂端
+        p3End,                  // 3：第三頁底端
+        $('#p4').offset().top,  // 4：第四頁
+        $('#p5').offset().top   // 5：第五頁
+      ],
+      p3Top: p3Top,
+      p3End: p3End
+    };
+  }
+
+  // 跳頁：用 jQuery animate 捲到指定位置
+  function jumpTo(y) {
+    busy = true;
+    $scroller.stop(true).animate({ scrollTop: y }, 700, function () {
+      // 動畫結束後再等一下，吃掉觸控板的慣性捲動，避免一次跳兩頁
+      setTimeout(function () { busy = false; }, 300);
+    });
+  }
+
+  // 第三頁內的平滑捲動：每次往目標位置累加，並用動畫慢慢滑過去
+  function smoothScroll(delta, pt) {
+    target = Math.min(Math.max(target + delta, pt.p3Top), pt.p3End); // 限制在第三頁範圍內
+    lastSmooth = Date.now();
+    $scroller.stop(true).animate({ scrollTop: target }, 500, 'swing');
+  }
+
+  // 統一處理捲動（滑鼠滾輪、觸控都會呼叫這裡）
+  // delta > 0 代表往下，delta < 0 代表往上
+  function handle(delta) {
+    if (busy || delta === 0) return;
+
+    var pt  = getPoints();
+    var st  = $scroller.scrollTop();
+    var dir = delta > 0 ? 1 : -1;
+
+    // ① 正在第三頁中間（還沒到頂或底）→ 平滑捲動
+    if (st > pt.p3Top + 1 && st < pt.p3End - 1) {
+      smoothScroll(delta, pt);
+      return;
+    }
+
+    // ② 剛在第三頁內捲到頂/底的瞬間，忽略殘餘的滾動，避免直接衝出第三頁
+    if (Date.now() - lastSmooth < 400) return;
+
+    // ③ 找出目前停在哪個停靠點
+    var i = 0;
+    $.each(pt.list, function (k, y) { if (Math.abs(st - y) < 2) i = k; });
+
+    // 在第三頁頂端往下，或在第三頁底端往上 → 進入第三頁平滑捲動
+    if ((i === 2 && dir > 0) || (i === 3 && dir < 0)) {
+      target = st;
+      smoothScroll(delta, pt);
+      return;
+    }
+
+    // ④ 其餘情況 → 輕輕一滑就跳到上一頁 / 下一頁
+    var next = Math.min(Math.max(i + dir, 0), pt.list.length - 1);
+    if (next !== i) jumpTo(pt.list[next]);
+  }
+
+  // ===== 滑鼠滾輪 / 觸控板 =====
+  // 用原生 addEventListener 並設定 passive:false，才能用 preventDefault 擋掉瀏覽器預設捲動
+  window.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    handle(e.deltaY);
+  }, { passive: false });
+
+  // ===== 手機觸控滑動 =====
+  var startY = 0;
+  window.addEventListener('touchstart', function (e) {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    e.preventDefault(); // 擋掉原生觸控捲動
+  }, { passive: false });
+
+  window.addEventListener('touchend', function (e) {
+    var dy = startY - e.changedTouches[0].clientY; // 手指往上滑 = 頁面往下
+    if (Math.abs(dy) > 30) handle(dy * 2);         // 滑動超過 30px 才算數
+  });
+
+  // 視窗大小改變時，對齊回目前所在的頁面
+  $(window).on('resize', function () {
+    var pt = getPoints(), st = $scroller.scrollTop(), best = 0;
+    $.each(pt.list, function (k, y) {
+      if (Math.abs(st - y) < Math.abs(st - pt.list[best])) best = k;
+    });
+    if (!(st > pt.p3Top && st < pt.p3End)) $scroller.scrollTop(pt.list[best]);
+  });
+
+});
+</script>
+</body>
+</html>
